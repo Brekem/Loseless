@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loseless</title>
+<style>
+  :root { --bg:#0f1115; --panel:#181b22; --text:#e8e8ea; --muted:#8b8f99; --accent:#3ddc97; --err:#ff6b6b; --border:#2a2e38; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px; }
+  h1 { margin:0 0 4px; font-size:28px; } h1 span { color:var(--accent); }
+  p.sub { color:var(--muted); margin:0 0 24px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:12px 0 6px; }
+  textarea, input, select { width:100%; background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px; font:inherit; }
+  textarea { min-height:110px; resize:vertical; }
+  .row { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; }
+  .check { display:flex; gap:8px; align-items:center; margin-top:14px; color:var(--text); font-size:14px; }
+  .check input { width:auto; }
+  button { margin-top:18px; width:100%; padding:12px; border:0; border-radius:8px; background:var(--accent); color:#0b0d10; font-weight:700; font-size:16px; cursor:pointer; }
+  .warn { color:var(--err); }
+  .job { border-top:1px solid var(--border); padding:12px 0; } .job:first-child { border-top:0; }
+  .job .meta { color:var(--muted); font-size:13px; word-break:break-all; }
+  .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; background:var(--border); margin-right:6px; }
+  .badge.done { background:var(--accent); color:#0b0d10; } .badge.error { background:var(--err); color:#0b0d10; }
+  ul { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lose<span>less</span></h1>
+  <p class="sub">Solo audio · videos y playlists de YouTube · FLAC / WAV / AIFF / ALAC / MP3</p>
+  {% if not ffmpeg %}<div class="card warn">⚠ No se encontró <b>ffmpeg</b>. Instálalo antes de descargar.</div>{% endif %}
+  <form class="card" id="f">
+    <label for="urls">URLs (una por línea: videos o playlists)</label>
+    <textarea id="urls" placeholder="https://www.youtube.com/playlist?list=..." required></textarea>
+    <div class="row">
+      <div><label for="format">Formato</label>
+        <select id="format">{% for k, v in formats.items() %}<option value="{{k}}" {% if k=='flac' %}selected{% endif %}>{{k|upper}} — {{v.desc}}</option>{% endfor %}</select></div>
+      <div><label for="sr">Sample rate</label>
+        <select id="sr"><option value="">Original</option><option>44100</option><option>48000</option></select></div>
+    </div>
+    <div class="row">
+      <div><label for="out">Carpeta destino</label><input id="out" value="downloads"></div>
+      <div><label for="items">Items de playlist (opcional)</label><input id="items" placeholder="1-10,15"></div>
+    </div>
+    <label class="check"><input type="checkbox" id="norm"> Normalizar volumen (-14 LUFS)</label>
+    <button>Descargar</button>
+    <p id="msg" class="warn"></p>
+  </form>
+  <div class="card"><b>Cola</b><div id="jobs"><p class="sub">Sin descargas todavía.</p></div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+$('f').onsubmit = async e => {
+  e.preventDefault(); $('msg').textContent = '';
+  const r = await fetch('/api/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
+    urls:$('urls').value, format:$('format').value, sample_rate:$('sr').value, output:$('out').value, items:$('items').value, normalize:$('norm').checked })});
+  const j = await r.json();
+  if (!r.ok) { $('msg').textContent = j.error; return; }
+  $('urls').value = ''; refresh();
+};
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function refresh() {
+  const jobs = await (await fetch('/api/jobs')).json();
+  if (!jobs.length) return;
+  $('jobs').innerHTML = jobs.map(j => {
+    const cls = j.status.startsWith('done') ? 'done' : j.status === 'error' ? 'error' : '';
+    return `<div class="job"><span class="badge ${cls}">${esc(j.status)}</span><span class="badge">${esc(j.format)}</span>
+      ${j.current ? `↓ ${esc(j.current)} ${esc(j.percent)}` : ''}
+      <div class="meta">${j.urls.map(esc).join('<br>')}<br>→ ${esc(j.output)}</div>
+      ${j.error ? `<p class="warn">${esc(j.error)}</p>` : ''}
+      ${j.done.length ? `<ul>${j.done.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}</div>`;
+  }).join('');
+}
+setInterval(refresh, 1500); refresh();
+</script>
+</body>
+</html>

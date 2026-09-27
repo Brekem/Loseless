@@ -42,6 +42,14 @@ class DownloadOptions:
     extra_postprocessor_args: list[str] = field(default_factory=list)
 
 
+def _has_mutagen() -> bool:
+    try:
+        import mutagen  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def check_ffmpeg() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
@@ -80,8 +88,10 @@ def build_ydl_opts(opts: DownloadOptions, hooks: list[ProgressCallback] | None =
     if opts.embed_metadata:
         postprocessors.append({"key": "FFmpegMetadata", "add_metadata": True})
     # WAV/AIFF no admiten portada embebida vía yt-dlp.
-    thumb = opts.embed_thumbnail and opts.audio_format in THUMBNAIL_FORMATS
+    thumb = opts.embed_thumbnail and opts.audio_format in THUMBNAIL_FORMATS and _has_mutagen()
     if thumb:
+        # YouTube da portadas en .webp, que Rekordbox/Serato no muestran: pasar a JPG.
+        postprocessors.insert(0, {"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
         postprocessors.append({"key": "EmbedThumbnail", "already_have_thumbnail": False})
 
     ydl_opts: dict = {

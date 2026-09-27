@@ -1,2 +1,3 @@
 yt-dlp>=2025.1.1
 flask>=3.0
+mutagen>=1.47  # necesario para incrustar portadas en FLAC/M4A/MP3

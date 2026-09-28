@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -50,8 +51,25 @@ def _has_mutagen() -> bool:
     return True
 
 
+def bundled_ffmpeg_dir() -> Path | None:
+    """Carpeta con ffmpeg incluido dentro del .exe (PyInstaller), si existe."""
+    base = getattr(sys, "_MEIPASS", None)
+    if base and (Path(base) / "ffmpeg.exe").exists():
+        return Path(base)
+    return None
+
+
 def check_ffmpeg() -> bool:
+    if bundled_ffmpeg_dir():
+        return True
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
+
+def default_output_dir() -> Path:
+    """En el .exe: Música\\Loseless. Desde el código: ./downloads."""
+    if getattr(sys, "frozen", False):
+        return Path.home() / "Music" / "Loseless"
+    return Path("downloads")
 
 
 def build_ydl_opts(opts: DownloadOptions, hooks: list[ProgressCallback] | None = None) -> dict:
@@ -122,6 +140,8 @@ def build_ydl_opts(opts: DownloadOptions, hooks: list[ProgressCallback] | None =
         ydl_opts["download_archive"] = str(out / ".archive.txt")
     if opts.playlist_items:
         ydl_opts["playlist_items"] = opts.playlist_items
+    if ffmpeg_dir := bundled_ffmpeg_dir():
+        ydl_opts["ffmpeg_location"] = str(ffmpeg_dir)
     if opts.cookies_from_browser:
         ydl_opts["cookiesfrombrowser"] = (opts.cookies_from_browser,)
     return ydl_opts

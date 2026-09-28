@@ -3,7 +3,13 @@
 App personal para bajar **solo el audio** de videos y **playlists completas** de YouTube,
 en formatos listos para DJ (FLAC, WAV, AIFF, ALAC, MP3 320). Usa [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg.
 
-## Windows: doble clic
+## Windows: Loseless.exe (recomendado)
+
+Baja **Loseless.exe** de https://github.com/Brekem/Loseless/releases/latest y ábrelo con doble clic.
+Trae todo incluido (Python, yt-dlp y ffmpeg): no hay que instalar nada. La música se guarda en `Música\Loseless`.
+El exe se recompila solo cada lunes con la última versión de yt-dlp; si YouTube deja de funcionar, baja el más nuevo.
+
+## Windows: doble clic con Python
 
 1. Instala Python desde https://www.python.org/downloads/ (marca **"Add python.exe to PATH"**).
 2. Baja el ZIP del repo, descomprímelo y haz **doble clic en `Loseless.bat`**.

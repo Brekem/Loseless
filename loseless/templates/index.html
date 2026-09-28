@@ -42,11 +42,12 @@
         <select id="sr"><option value="">Original</option><option>44100</option><option>48000</option></select></div>
     </div>
     <div class="row">
-      <div><label for="out">Carpeta destino</label><input id="out" value="downloads"></div>
+      <div><label for="out">Carpeta destino</label><input id="out" value="{{ default_out }}"></div>
       <div><label for="items">Items de playlist (opcional)</label><input id="items" placeholder="1-10,15"></div>
     </div>
     <label class="check"><input type="checkbox" id="norm"> Normalizar volumen (-14 LUFS)</label>
     <button>Descargar</button>
+    <button type="button" id="open" style="background:var(--border);color:var(--text)">📂 Abrir carpeta de música</button>
     <p id="msg" class="warn"></p>
   </form>
   <div class="card"><b>Cola</b><div id="jobs"><p class="sub">Sin descargas todavía.</p></div></div>
@@ -61,6 +62,7 @@ $('f').onsubmit = async e => {
   if (!r.ok) { $('msg').textContent = j.error; return; }
   $('urls').value = ''; refresh();
 };
+$('open').onclick = () => fetch('/api/open', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:$('out').value})});
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 async function refresh() {
   const jobs = await (await fetch('/api/jobs')).json();

@@ -1,0 +1,67 @@
+name: Build Windows exe
+
+on:
+  push:
+    branches: [main, claude/youtube-audio-downloader-mwf5k6]
+  workflow_dispatch:
+  schedule:
+    # Recompila cada lunes para traer la última versión de yt-dlp (YouTube cambia seguido).
+    - cron: "17 6 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Bajar ffmpeg
+        shell: pwsh
+        run: |
+          Invoke-WebRequest https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_tmp
+          $bin = Get-ChildItem ffmpeg_tmp -Recurse -Filter ffmpeg.exe | Select-Object -First 1
+          New-Item -ItemType Directory -Force ffmpeg_bin | Out-Null
+          Copy-Item $bin.FullName ffmpeg_bin/
+          Copy-Item (Join-Path $bin.DirectoryName ffprobe.exe) ffmpeg_bin/
+
+      - name: Compilar exe
+        run: >
+          pyinstaller --onefile --name Loseless --console --noconfirm
+          --add-data "loseless/templates;loseless/templates"
+          --add-binary "ffmpeg_bin/ffmpeg.exe;."
+          --add-binary "ffmpeg_bin/ffprobe.exe;."
+          --collect-all yt_dlp
+          --collect-submodules mutagen
+          loseless_app.py
+
+      - name: Probar que arranca
+        run: dist/Loseless.exe --help
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loseless-exe
+          path: dist/Loseless.exe
+
+      - name: Publicar release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.${{ github.run_number }}
+          name: Loseless v0.1.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          files: dist/Loseless.exe
+          body: |
+            Descarga **Loseless.exe** y ábrelo con doble clic. Todo viene incluido (Python, yt-dlp y ffmpeg), no hay que instalar nada.
+            La música se guarda en `Música\Loseless`.

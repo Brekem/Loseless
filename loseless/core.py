@@ -49,24 +49,30 @@ MIX_MAX_ITEMS = 50
 
 
 def normalize_url(url: str) -> str:
-    """Un link de un video siempre baja SOLO ese video.
+    """Decide si un link de YouTube es un video suelto o una playlist.
 
-    Al abrir un tema desde un Mix o una playlist, YouTube agrega `&list=...` al link
-    del video (p.ej. watch?v=abc&list=RDabc&start_radio=1). Quitamos esos parámetros
-    para no bajar la lista entera (o infinita, en el caso de los Mix).
-    Para bajar una playlist completa, usa el link /playlist?list=...
+    - Video abierto desde un Mix/Radio (`&list=RD...`): solo ese video. Los Mix son
+      listas infinitas que YouTube genera solo.
+    - Video abierto desde una playlist real (`&list=PL...`, álbumes `OLAK...`, etc.):
+      la playlist completa, como link /playlist?list=...
+    - Cualquier otro link se deja igual.
     """
-    parsed = urlparse(url.strip())
+    url = url.strip()
+    parsed = urlparse(url)
     host = parsed.netloc.lower()
     if "youtube.com" not in host and "youtu.be" not in host:
-        return url.strip()
+        return url
     query = parse_qs(parsed.query)
     is_video = "youtu.be" in host or parsed.path.startswith(("/watch", "/shorts/", "/live/"))
-    if is_video and "list" in query:
+    list_id = (query.get("list") or [""])[0]
+    if not (is_video and list_id):
+        return url
+    if list_id.startswith("RD"):
         for key in ("list", "index", "start_radio", "pp"):
             query.pop(key, None)
-        parsed = parsed._replace(query=urlencode(query, doseq=True))
-    return urlunparse(parsed)
+        return urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
+    netloc = "music.youtube.com" if host.startswith("music.") else "www.youtube.com"
+    return urlunparse(("https", netloc, "/playlist", "", urlencode({"list": list_id}), ""))
 
 
 def is_mix(url: str) -> bool:

@@ -12,6 +12,7 @@ from collections import deque
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
+from yt_dlp.utils import DownloadCancelled
 
 from .core import FORMATS, DownloadOptions, check_ffmpeg, default_output_dir, download
 
@@ -32,9 +33,13 @@ def _worker() -> None:
         if job_id is None:
             continue
         job = _jobs[job_id]
+        if job["cancel"]:
+            continue
         job["status"] = "running"
 
         def hook(d: dict, job=job) -> None:
+            if job["cancel"]:
+                raise DownloadCancelled("Cancelado")
             info = d.get("info_dict") or {}
             title = info.get("title") or Path(d.get("filename", "")).name
             if d.get("status") == "downloading":
@@ -46,6 +51,8 @@ def _worker() -> None:
         try:
             code = download(job["opts"], hook)
             job["status"] = "done" if code == 0 else "done_with_errors"
+        except DownloadCancelled:
+            job["status"] = "cancelled"
         except Exception as e:  # noqa: BLE001 - mostramos el error en la UI
             job["status"] = "error"
             job["error"] = str(e)
@@ -75,7 +82,7 @@ def create_job():
     _jobs[job_id] = {
         "id": job_id, "urls": urls, "format": opts.audio_format,
         "output": str(opts.output_dir.expanduser().resolve()),
-        "status": "queued", "current": None, "percent": "", "done": [], "error": None, "opts": opts,
+        "status": "queued", "current": None, "percent": "", "done": [], "error": None, "cancel": False, "opts": opts,
     }
     with _lock:
         _queue.append(job_id)
@@ -91,6 +98,19 @@ def open_folder():
         os.startfile(path)  # type: ignore[attr-defined]
     else:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(path)])
+    return jsonify(ok=True)
+
+
+@app.post("/api/jobs/<job_id>/cancel")
+def cancel_job(job_id: str):
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify(error="No existe"), 404
+    job["cancel"] = True
+    with _lock:
+        if job_id in _queue:
+            _queue.remove(job_id)
+            job["status"] = "cancelled"
     return jsonify(ok=True)
 
 

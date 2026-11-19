@@ -7,6 +7,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import yt_dlp
 
@@ -41,6 +42,36 @@ class DownloadOptions:
     normalize: bool = False  # loudnorm EBU R128 (recodifica)
     cookies_from_browser: str | None = None  # "chrome", "firefox"...
     extra_postprocessor_args: list[str] = field(default_factory=list)
+
+
+# Los "Mix" de YouTube (listas que empiezan con RD) son infinitas: se generan solas.
+MIX_MAX_ITEMS = 50
+
+
+def normalize_url(url: str) -> str:
+    """Un link de un video siempre baja SOLO ese video.
+
+    Al abrir un tema desde un Mix o una playlist, YouTube agrega `&list=...` al link
+    del video (p.ej. watch?v=abc&list=RDabc&start_radio=1). Quitamos esos parámetros
+    para no bajar la lista entera (o infinita, en el caso de los Mix).
+    Para bajar una playlist completa, usa el link /playlist?list=...
+    """
+    parsed = urlparse(url.strip())
+    host = parsed.netloc.lower()
+    if "youtube.com" not in host and "youtu.be" not in host:
+        return url.strip()
+    query = parse_qs(parsed.query)
+    is_video = "youtu.be" in host or parsed.path.startswith(("/watch", "/shorts/", "/live/"))
+    if is_video and "list" in query:
+        for key in ("list", "index", "start_radio", "pp"):
+            query.pop(key, None)
+        parsed = parsed._replace(query=urlencode(query, doseq=True))
+    return urlunparse(parsed)
+
+
+def is_mix(url: str) -> bool:
+    lists = parse_qs(urlparse(url).query).get("list", [])
+    return any(x.startswith("RD") for x in lists)
 
 
 def _has_mutagen() -> bool:
@@ -126,7 +157,8 @@ def build_ydl_opts(opts: DownloadOptions, hooks: list[ProgressCallback] | None =
         "postprocessors": postprocessors,
         "postprocessor_args": {"extractaudio": pp_args} if pp_args else {},
         "ignoreerrors": True,  # un video caído no detiene la playlist
-        "noplaylist": False,
+        # Si un link es ambiguo (video + lista), bajar solo el video.
+        "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
@@ -156,5 +188,11 @@ def download(opts: DownloadOptions, on_progress: ProgressCallback | None = None)
         )
     hooks = [on_progress] if on_progress else []
     ydl_opts = build_ydl_opts(opts, hooks)
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        return ydl.download(opts.urls)
+    code = 0
+    for url in (normalize_url(u) for u in opts.urls if u.strip()):
+        per_url = dict(ydl_opts)
+        if is_mix(url) and not opts.playlist_items:
+            per_url["playlistend"] = MIX_MAX_ITEMS
+        with yt_dlp.YoutubeDL(per_url) as ydl:
+            code = ydl.download([url]) or code
+    return code

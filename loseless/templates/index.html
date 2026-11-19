@@ -23,6 +23,7 @@
   .job { border-top:1px solid var(--border); padding:12px 0; } .job:first-child { border-top:0; }
   .job .meta { color:var(--muted); font-size:13px; word-break:break-all; }
   .badge { display:inline-block; font-size:12px; padding:2px 8px; border-radius:99px; background:var(--border); margin-right:6px; }
+  .cancel { float:right; width:auto; margin:0; padding:4px 10px; font-size:12px; background:var(--err); color:#0b0d10; }
   .badge.done { background:var(--accent); color:#0b0d10; } .badge.error { background:var(--err); color:#0b0d10; }
   ul { margin:6px 0 0; padding-left:18px; color:var(--muted); font-size:13px; }
 </style>
@@ -64,15 +65,19 @@ $('f').onsubmit = async e => {
 };
 $('open').onclick = () => fetch('/api/open', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:$('out').value})});
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function cancelJob(id) { await fetch(`/api/jobs/${id}/cancel`, {method:'POST'}); refresh(); }
 async function refresh() {
   const jobs = await (await fetch('/api/jobs')).json();
   if (!jobs.length) return;
   $('jobs').innerHTML = jobs.map(j => {
     const cls = j.status.startsWith('done') ? 'done' : j.status === 'error' ? 'error' : '';
-    return `<div class="job"><span class="badge ${cls}">${esc(j.status)}</span><span class="badge">${esc(j.format)}</span>
+    const active = j.status === 'running' || j.status === 'queued';
+    const cancelBtn = active && !j.cancel ? `<button class="cancel" onclick="cancelJob('${j.id}')">✕ Cancelar</button>` : '';
+    return `<div class="job">${cancelBtn}<span class="badge ${cls}">${esc(j.status)}</span><span class="badge">${esc(j.format)}</span>
       ${j.current ? `↓ ${esc(j.current)} ${esc(j.percent)}` : ''}
       <div class="meta">${j.urls.map(esc).join('<br>')}<br>→ ${esc(j.output)}</div>
       ${j.error ? `<p class="warn">${esc(j.error)}</p>` : ''}
+      ${j.done.length ? `<div class="meta">${j.done.length} tema(s) listos</div>` : ''}
       ${j.done.length ? `<ul>${j.done.map(t => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}</div>`;
   }).join('');
 }
